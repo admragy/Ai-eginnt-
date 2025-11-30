@@ -7,6 +7,12 @@ import json
 from datetime import datetime
 from supabase import create_client
 from pydantic import BaseModel
+from twilio.rest import Client
+
+# Twilio credentials
+TWILIO_SID   = os.environ.get("TWILIO_SID")
+TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN")
+TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")  # مثال: +14155238886
 
 app = FastAPI(title="Hunter Pro", version="1.0")
 
@@ -88,5 +94,18 @@ def get_leads(user_id: str = "admin"):
     try:
         rows = supabase.table("leads").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
         return {"success": True, "leads": rows.data}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/send-whatsapp")
+async def send_whatsapp(req: WhatsAppRequest):
+    try:
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        message = client.messages.create(
+            from_=f"whatsapp:{TWILIO_WHATSAPP_NUMBER}",
+            body=req.message,
+            to=f"whatsapp:{req.phone_number}"
+        )
+        return {"success": True, "message": "تم الإرسال", "sid": message.sid}
     except Exception as e:
         return {"success": False, "error": str(e)}
