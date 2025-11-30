@@ -1,12 +1,10 @@
 services:
   - type: web
-    name: hunter-pro-system
+    name: hunter-pro
     env: python
     plan: free
-    buildCommand: |
-      pip install --upgrade pip
-      pip install -r requirements.txt
-    startCommand: python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: SUPABASE_URL
         sync: false
@@ -14,5 +12,3 @@ services:
         sync: false
       - key: SERPER_KEYS
         sync: false
-      - key: JWT_SECRET_KEY
-        generateValue: true
