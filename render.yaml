@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: hunter-pro-system
+    name: brilliox
     env: python
     python: 3.11
     buildCommand: pip install -r requirements.txt
@@ -11,4 +11,10 @@ services:
       - key: SUPABASE_KEY
         sync: false
       - key: SERPER_KEYS
+        sync: false
+      - key: TWILIO_SID
+        sync: false
+      - key: TWILIO_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
         sync: false
