@@ -3,8 +3,10 @@ services:
     name: hunter-pro-system
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: SUPABASE_URL
         sync: false
@@ -14,9 +16,3 @@ services:
         sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
-      - key: TWILIO_SID
-        sync: false
-      - key: TWILIO_TOKEN
-        sync: false
-      - key: TWILIO_WHATSAPP_NUMBER
-        sync: false
