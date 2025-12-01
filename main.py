@@ -67,7 +67,10 @@ class AddUserRequest(BaseModel):
     is_admin: bool
 
 # ========== الأدوات ==========
-def get_key(): global key_index; return SERPER_KEYS[key_index % len(SERPER_KEYS)] if SERPER_KEYS else None
+def get_key():
+    global key_index
+    return SERPER_KEYS[key_index % len(SERPER_KEYS)] if SERPER_KEYS else None
+
 def analyze_quality(text):
     text = text.lower()
     if any(w in text for w in ["للبيع", "for sale", "سمسار", "broker"]): return "رفض"
