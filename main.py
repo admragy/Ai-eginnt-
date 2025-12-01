@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import re
@@ -9,13 +9,12 @@ from supabase import create_client
 from pydantic import BaseModel
 from twilio.rest import Client
 
-# Twilio credentials
+# Twilio
 TWILIO_SID   = os.environ.get("TWILIO_SID")
 TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN")
-TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")  # مثال: +14155238886
+TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
 
 app = FastAPI(title="Hunter Pro", version="1.0")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,6 +31,7 @@ supabase = create_client(
 SERPER_KEYS = [k.strip() for k in os.environ.get("SERPER_KEYS", "").split(",") if k.strip()]
 key_index = 0
 
+# ========== النماذج ==========
 class HuntRequest(BaseModel):
     intent_sentence: str
     city: str
@@ -42,13 +42,32 @@ class WhatsAppRequest(BaseModel):
     message: str
     user_id: str
 
-def get_key():
-    global key_index
-    if not SERPER_KEYS: return None
-    key = SERPER_KEYS[key_index]
-    key_index = (key_index + 1) % len(SERPER_KEYS)
-    return key
+class AddLeadRequest(BaseModel):
+    phone_number: str
+    full_name: str = ""
+    source: str = "Manual"
+    quality: str = "جيد ⭐"
+    notes: str = ""
+    user_id: str
 
+class ShareRequest(BaseModel):
+    phone: str
+    shared_with: list[str] = []
+    is_public: bool = False
+    user_id: str
+
+class AddUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str
+    can_hunt: bool
+    can_campaign: bool
+    can_share: bool
+    can_see_all_data: bool
+    is_admin: bool
+
+# ========== الأدوات ==========
+def get_key(): global key_index; return SERPER_KEYS[key_index % len(SERPER_KEYS)] if SERPER_KEYS else None
 def analyze_quality(text):
     text = text.lower()
     if any(w in text for w in ["للبيع", "for sale", "سمسار", "broker"]): return "رفض"
@@ -81,6 +100,7 @@ def run_search(intent: str, city: str, user_id: str):
                 for phone in phones: save_lead(phone, intent, quality, user_id)
     except: pass
 
+# ========== Endpoints ==========
 @app.get("/")
 def home(): return {"message": "Hunter Pro is running ✅"}
 
@@ -90,9 +110,13 @@ async def hunt(req: HuntRequest, bg: BackgroundTasks):
     return {"status": "started", "search": req.intent_sentence, "city": req.city}
 
 @app.get("/leads")
-def get_leads(user_id: str = "admin"):
+def get_leads(user_id: str = "admin", see_all: bool = False):
     try:
-        rows = supabase.table("leads").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        user = supabase.table("users").select("can_see_all_data", "is_admin").eq("username", user_id).execute()
+        if user.data and (user.data[0]["can_see_all_data"] or user.data[0]["is_admin"]):
+            rows = supabase.table("leads").select("*").order("created_at", desc=True).execute()
+        else:
+            rows = supabase.table("leads").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
         return {"success": True, "leads": rows.data}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -109,3 +133,85 @@ async def send_whatsapp(req: WhatsAppRequest):
         return {"success": True, "message": "تم الإرسال", "sid": message.sid}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+# إضافة عميل خارجي
+@app.post("/add-lead")
+def add_lead(req: AddLeadRequest):
+    try:
+        supabase.table("leads").insert(req.dict()).execute()
+        return {"success": True, "message": "تم الإضافة"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# نظام المشاركة (داخلي / خارجي)
+@app.post("/share-lead")
+def share_lead(req: ShareRequest):
+    try:
+        if req.is_public:
+            share_link = f"{API_URL}/public/lead/{req.phone}"
+            supabase.table("leads").update({"is_public": True}).eq("phone_number", req.phone).eq("user_id", req.user_id).execute()
+            return {"success": True, "share_link": share_link}
+        supabase.table("leads").update({"shared_with": req.shared_with}).eq("phone_number", req.phone).eq("user_id", req.user_id).execute()
+        return {"success": True, "message": f"تمت المشاركة مع {req.shared_with}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/public/lead/{phone}")
+def public_lead(phone: str):
+    try:
+        row = supabase.table("leads").select("*").eq("phone_number", phone).eq("is_public", True).execute()
+        if row.data: return {"success": True, "lead": row.data[0]}
+        else: return {"success": False, "message": "غير مسموح بالمشاهدة"}
+    except: return {"success": False, "message": "خطأ في البيانات"}
+
+# إدارة اليوزرز
+@app.get("/admin-stats")
+def admin_stats():
+    try:
+        total_users = supabase.table("users").select("id", count="exact").execute().count or 0
+        total_leads = supabase.table("leads").select("id", count="exact").execute().count or 0
+        total_messages = supabase.table("campaign_logs").select("id", count="exact").execute().count or 0
+        return {"total_users": total_users, "total_leads": total_leads, "total_messages": total_messages}
+    except: return {"total_users": 0, "total_leads": 0, "total_messages": 0}
+
+@app.get("/last-events")
+def last_events():
+    try:
+        events = supabase.table("events").select("*").order("created_at", desc=True).limit(10).execute()
+        return {"events": events.data}
+    except: return {"events": []}
+
+@app.post("/add-user")
+def add_user(req: AddUserRequest):
+    try:
+        supabase.table("users").insert(req.dict()).execute()
+        return {"success": True, "message": "تم الإضافة"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/delete-user")
+def delete_user(username: str):
+    try:
+        supabase.table("users").delete().eq("username", username).execute()
+        return {"success": True, "message": "تم الحذف"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/update-permissions")
+def update_permissions(req: dict):
+    try:
+        supabase.table("users").update({
+            "can_hunt": req["can_hunt"],
+            "can_campaign": req["can_campaign"],
+            "can_share": req["can_share"],
+            "can_see_all_data": req["can_see_all_data"],
+            "is_admin": req["is_admin"]
+        }).eq("username", req["username"]).execute()
+        return {"success": True, "message": "تم التحديث"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# صحة التطبيق
+@app.get("/health")
+def health_check():
+    return {"status": "running", "timestamp": datetime.now().isoformat()}
