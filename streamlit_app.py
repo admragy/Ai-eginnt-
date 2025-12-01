@@ -7,15 +7,12 @@ API_URL = "https://brilliox.ragyexp.repl.co"  # رابط الـ Backend
 
 st.set_page_config(page_title="Hunter Pro CRM", layout="wide")
 
-# دخول افتراضي
 if "user" not in st.session_state:
     st.session_state.user = "admin"
 
-# عنوان الصفحة
 st.title("🎯 Hunter Pro - لوحة العميل")
 
 # ✅ إحصائيات سريعة
-st.subheader("📊 الإحصائيات")
 res = requests.get(f"{API_URL}/admin-stats", params={"user_id": st.session_state.user})
 if res.status_code == 200:
     data = res.json()
