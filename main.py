@@ -1,220 +1,546 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-import os
-import re
-import requests
-import json
-from datetime import datetime
-from supabase import create_client
-from pydantic import BaseModel
-from twilio.rest import Client
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Hunter Pro CRM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-dark: #1A1F36;
+            --cyan: #00D9FF;
+            --green: #00B894;
+            --red: #FF7675;
+            --white: #FFFFFF;
+            --gray-light: #B2BAC2;
+        }
+        * {
+            box-sizing: border-box;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', sans-serif;
+            background: var(--primary-dark);
+            color: var(--white);
+            min-height: 100vh;
+            width: 100%;
+            overflow-x: hidden;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .btn {
+            background: var(--cyan);
+            color: var(--primary-dark);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            margin: 8px 0;
+            width: 100%;
+            font-size: 16px;
+            transition: background 0.3s ease;
+        }
+        .btn:hover {
+            background: #00a3cc;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            margin: 8px 0;
+            font-size: 16px;
+            font-family: inherit;
+        }
+        #admin-chat-container, #campaigns-section, #extractor-container {
+            width: 100%;
+            max-width: 800px;
+            margin-top: 20px;
+        }
+        #admin-chat-messages, .chat-messages {
+            height: 50vh;
+            max-height: 500px;
+            overflow-y: auto;
+            background: #343541;
+            padding: 16px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .chat-message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 15px;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+        .chat-message.user {
+            background: #00B894;
+            color: #fff;
+            align-self: flex-end;
+        }
+        .chat-message.bot {
+            background: #444654;
+            color: #fff;
+            align-self: flex-start;
+        }
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 12px;
+            background: #444654;
+            border-radius: 8px;
+            width: fit-content;
+        }
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #fff;
+            border-radius: 50%;
+            animation: blink 1.2s infinite;
+        }
+        @keyframes blink {
+            0%, 60%, 100% { opacity: 0.2; }
+            30% { opacity: 1; }
+        }
+        .chat-input-form {
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            background: #202123;
+            border-radius: 0 0 8px 8px;
+        }
+        .chat-input-form textarea {
+            flex: 1;
+            background: #40414f;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            resize: none;
+            font-family: inherit;
+            font-size: 16px;
+            max-height: 120px;
+        }
+        .chat-input-form .send-btn {
+            background: #00B894;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 0 20px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        textarea {
+            width: 100%;
+            border-radius: 8px;
+            padding: 10px;
+            border: none;
+            resize: vertical;
+        }
+        .campaign-card {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            text-align: right;
+        }
 
-# Twilio
-TWILIO_SID   = os.environ.get("TWILIO_SID")
-TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN")
-TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
+        /* ====== Responsive: جميع الأجهزة ====== */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                padding: 10px;
+            }
+            .card {
+                padding: 15px;
+                margin: 10px 0;
+            }
+            .btn {
+                font-size: 18px;
+                padding: 14px;
+            }
+            input, textarea {
+                font-size: 18px;
+                padding: 14px;
+            }
+            #admin-chat-messages, .chat-messages {
+                height: 40vh;
+                padding: 12px;
+            }
+            .chat-message {
+                font-size: 16px;
+            }
+        }
 
-app = FastAPI(title="Hunter Pro", version="1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+        @media (min-width: 601px) and (max-width: 1024px) {
+            .container {
+                padding: 15px;
+            }
+            .card {
+                padding: 18px;
+            }
+            .btn {
+                font-size: 17px;
+                padding: 13px;
+            }
+            input, textarea {
+                font-size: 17px;
+                padding: 13px;
+            }
+        }
 
-supabase = create_client(
-    os.environ.get("SUPABASE_URL"),
-    os.environ.get("SUPABASE_KEY")
-)
+        @media (min-width: 1025px) {
+            .container {
+                padding: 20px;
+            }
+            .card {
+                padding: 20px;
+            }
+            .btn {
+                font-size: 16px;
+                padding: 12px;
+            }
+            input, textarea {
+                font-size: 16px;
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
 
-SERPER_KEYS = [k.strip() for k in os.environ.get("SERPER_KEYS", "").split(",") if k.strip()]
-key_index = 0
+    <!-- شاشة 1: تسجيل الدخول -->
+    <div id="login-form" class="card">
+        <h2>🔐 تسجيل الدخول</h2>
+        <!-- زرار Google OAuth -->
+        <button class="btn" onclick="loginWithGoogle()">دخول بـ Google</button>
+        <hr style="margin: 15px 0; border: none; border-top: 1px solid rgba(255,255,255,0.2);">
+        <input id="email" placeholder="البريد الإلكتروني" value="admin@example.com"><br>
+        <input id="password" type="password" placeholder="كلمة السر" value="admin123"><br>
+        <button class="btn" onclick="login()">دخول يدوي</button>
+    </div>
 
-# ========== النماذج ==========
-class HuntRequest(BaseModel):
-    intent_sentence: str
-    city: str
-    user_id: str = "admin"
+    <!-- شاشة 2: لوحة التحكم -->
+    <div id="dashboard" class="container" style="display:none;">
+        <h2>🎯 لوحة تحكم Hunter Pro</h2>
 
-class WhatsAppRequest(BaseModel):
-    phone_number: str
-    message: str
-    user_id: str
+        <!-- أزرار الأدمن فقط -->
+        <div id="admin-only" style="display:none;">
+            <button class="btn" onclick="toggleChat()">💬 شات الأدمن</button>
+            <button class="btn" onclick="toggleExtractor()">📱 استخراج أرقام</button>
+        </div>
 
-class AddLeadRequest(BaseModel):
-    phone_number: str
-    full_name: str = ""
-    source: str = "Manual"
-    quality: str = "جيد ⭐"
-    notes: str = ""
-    user_id: str
+        <!-- أزرار اليوزر العادي -->
+        <div id="user-only" style="display:none;">
+            <button class="btn" onclick="showCampaigns()">📤 حملاتى</button>
+        </div>
 
-class ShareRequest(BaseModel):
-    phone: str
-    shared_with: list[str] = []
-    is_public: bool = False
-    user_id: str
+        <!-- شات الأدمن (نفس GPT) -->
+        <div id="admin-chat-container" class="card">
+            <div class="chat-header">
+                <span>💬 شات الأدمن الذكي</span>
+                <button onclick="toggleChat()" style="background:none;border:none;color:#fff;float:left;font-size:20px;">✖</button>
+            </div>
+            <div id="admin-chat-messages" class="chat-messages"></div>
+            <div id="typing-indicator" class="typing-indicator"><span></span><span></span><span></span></div>
+            <form id="chat-form" class="chat-input-form" onsubmit="sendMessage(event)">
+                <textarea id="chat-input" placeholder="اكتب رسالتك هنا..." rows="1" autofocus></textarea>
+                <button type="submit" class="send-btn">➤</button>
+            </form>
+        </div>
 
-class AddUserRequest(BaseModel):
-    username: str
-    password: str
-    role: str
-    can_hunt: bool
-    can_campaign: bool
-    can_share: bool
-    can_see_all_data: bool
-    is_admin: bool
+        <!-- استخراج الأرقام -->
+        <div id="extractor-container" class="card" style="display:none;">
+            <h3>📤 استخراج أرقام من نص</h3>
+            <textarea id="extract-text" rows="4" placeholder="انسخ النص اللي فيه أرقام هنا..."></textarea><br>
+            <button class="btn" onclick="extractPhones()">استخراج</button>
+            <div id="extract-result" style="margin-top:10px;"></div>
+        </div>
 
-# ========== الأدوات ==========
-def get_key():
-    global key_index
-    return SERPER_KEYS[key_index % len(SERPER_KEYS)] if SERPER_KEYS else None
+        <!-- حملات اليوزر -->
+        <div id="campaigns-section" class="card" style="display:none;">
+            <h3>📤 حملاتى</h3>
+            <button class="btn" onclick="showCreateCampaign()">➕ إنشاء حملة جديدة</button>
+            <div id="create-campaign-form" style="display:none;margin-top:15px;text-align:right;">
+                <input id="campaign-name" placeholder="اسم الحملة" style="width:100%;margin-bottom:10px;"><br>
+                <textarea id="campaign-message" rows="3" placeholder="نص الرسالة" style="width:100%;margin-bottom:10px;"></textarea><br>
+                <input type="file" id="campaign-media" accept="image/*,video/*" style="margin-bottom:10px;"><br>
+                <button class="btn" onclick="createCampaign()">إنشاء الحملة</button>
+            </div>
+            <div id="campaigns-list" style="margin-top:20px;"></div>
+        </div>
+    </div>
 
-def analyze_quality(text):
-    text = text.lower()
-    if any(w in text for w in ["للبيع", "for sale", "سمسار", "broker"]): return "رفض"
-    if any(w in text for w in ["مطلوب", "محتاج", "عايز", "wanted"]): return "ممتاز 🔥"
-    return "جيد ⭐"
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        let token = "";
+        let ws = null;
+        const chatHistory = JSON.parse(localStorage.getItem("adminChat") || "[]");
 
-def save_lead(phone, keyword, quality, user_id):
-    try:
-        supabase.table("leads").upsert({
-            "phone_number": phone, "source": f"Hunter: {keyword}",
-            "quality": quality, "status": "NEW", "user_id": user_id
-        }, on_conflict="phone_number").execute()
-        return True
-    except: return False
+        // ====== دخول بـ Google ======
+        async function loginWithGoogle() {
+            // محاكاة دخول بـ Google – في الحقيقة تستخدم Google OAuth
+            const email = prompt("أدخل بريدك الإلكتروني (محاكاة):");
+            if (!email) return;
+            const res = await fetch("/api/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ email: email, password: "google" })
+            });
+            const data = await res.json();
+            if (data.access_token) {
+                token = data.access_token;
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                document.getElementById("login-form").style.display = "none";
+                document.getElementById("dashboard").style.display = "block";
 
-def run_search(intent: str, city: str, user_id: str):
-    key = get_key()
-    if not key: return
-    query = f'"{intent}" "{city}"'
-    payload = json.dumps({"q": query, "num": 10, "gl": "eg", "hl": "ar"})
-    headers = {"X-API-KEY": key, "Content-Type": "application/json"}
-    try:
-        res = requests.post("https://google.serper.dev/search", headers=headers, data=payload, timeout=30)
-        if res.status_code == 200:
-            results = res.json().get("organic", [])
-            for r in results:
-                content = f"{r.get('title', '')} {r.get('snippet', '')}"
-                quality = analyze_quality(content)
-                phones = re.findall(r'(01[0125][0-9]{8})', content)
-                for phone in phones: save_lead(phone, intent, quality, user_id)
-    except: pass
+                if (payload.sub === "admin@example.com") {
+                    document.getElementById("admin-only").style.display = "block";
+                } else {
+                    document.getElementById("user-only").style.display = "block";
+                }
+                connectWebSocket();
+                renderHistory();
+            } else {
+                alert("❌ بيانات خاطئة");
+            }
+        }
 
-# ========== Endpoints ==========
-@app.get("/")
-def home(): return {"message": "Hunter Pro is running ✅"}
+        // ====== دخول يدوي ======
+        async function login() {
+            const res = await fetch("/api/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    email: document.getElementById("email").value,
+                    password: document.getElementById("password").value
+                })
+            });
+            const data = await res.json();
+            if (data.access_token) {
+                token = data.access_token;
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                document.getElementById("login-form").style.display = "none";
+                document.getElementById("dashboard").style.display = "block";
 
-@app.post("/hunt")
-async def hunt(req: HuntRequest, bg: BackgroundTasks):
-    bg.add_task(run_search, req.intent_sentence, req.city, req.user_id)
-    return {"status": "started", "search": req.intent_sentence, "city": req.city}
+                if (payload.sub === "admin@example.com") {
+                    document.getElementById("admin-only").style.display = "block";
+                } else {
+                    document.getElementById("user-only").style.display = "block";
+                }
+                connectWebSocket();
+                renderHistory();
+            } else {
+                alert("❌ بيانات خاطئة");
+            }
+        }
 
-@app.get("/leads")
-def get_leads(user_id: str = "admin", see_all: bool = False):
-    try:
-        user = supabase.table("users").select("can_see_all_data", "is_admin").eq("username", user_id).execute()
-        if user.data and (user.data[0]["can_see_all_data"] or user.data[0]["is_admin"]):
-            rows = supabase.table("leads").select("*").order("created_at", desc=True).execute()
-        else:
-            rows = supabase.table("leads").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-        return {"success": True, "leads": rows.data}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        // ====== توصيل WebSocket ======
+        function connectWebSocket() {
+            ws = new WebSocket(`wss://${location.host}/ws/admin-chat`);
+            ws.onmessage = e => {
+                document.getElementById('typing-indicator').style.display = 'none';
+                addMessageToUI('bot', e.data);
+                chatHistory.push({role: 'bot', text: e.data});
+                localStorage.setItem('adminChat', JSON.stringify(chatHistory));
+            };
+        }
 
-@app.post("/send-whatsapp")
-async def send_whatsapp(req: WhatsAppRequest):
-    try:
-        client = Client(TWILIO_SID, TWILIO_TOKEN)
-        message = client.messages.create(
-            from_=f"whatsapp:{TWILIO_WHATSAPP_NUMBER}",
-            body=req.message,
-            to=f"whatsapp:{req.phone_number}"
-        )
-        return {"success": True, "message": "تم الإرسال", "sid": message.sid}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        // ====== عرض سجل المحادثة ======
+        function renderHistory() {
+            const box = document.getElementById('admin-chat-messages');
+            box.innerHTML = "";
+            chatHistory.forEach(msg => addMessageToUI(msg.role, msg.text));
+        }
 
-# إضافة عميل خارجي
-@app.post("/add-lead")
-def add_lead(req: AddLeadRequest):
-    try:
-        supabase.table("leads").insert(req.dict()).execute()
-        return {"success": True, "message": "تم الإضافة"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        // ====== إضافة رسالة للواجهة ======
+        function addMessageToUI(role, text) {
+            const box = document.getElementById('admin-chat-messages');
+            const div = document.createElement('div');
+            div.className = `chat-message ${role}`;
+            div.innerHTML = marked.parse(text);
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
 
-# نظام المشاركة (داخلي / خارجي)
-@app.post("/share-lead")
-def share_lead(req: ShareRequest):
-    try:
-        if req.is_public:
-            share_link = f"{API_URL}/public/lead/{req.phone}"
-            supabase.table("leads").update({"is_public": True}).eq("phone_number", req.phone).eq("user_id", req.user_id).execute()
-            return {"success": True, "share_link": share_link}
-        supabase.table("leads").update({"shared_with": req.shared_with}).eq("phone_number", req.phone).eq("user_id", req.user_id).execute()
-        return {"success": True, "message": f"تمت المشاركة مع {req.shared_with}"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        // ====== إرسال رسالة ======
+        async function sendMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text || !ws) return;
 
-@app.get("/public/lead/{phone}")
-def public_lead(phone: str):
-    try:
-        row = supabase.table("leads").select("*").eq("phone_number", phone).eq("is_public", True).execute()
-        if row.data: return {"success": True, "lead": row.data[0]}
-        else: return {"success": False, "message": "غير مسموح بالمشاهدة"}
-    except: return {"success": False, "message": "خطأ في البيانات"}
+            if (text.startsWith('/')) {
+                document.getElementById('typing-indicator').style.display = 'flex';
+                const res = await fetch('/api/admin-command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ command: text })
+                });
+                const data = await res.json();
+                document.getElementById('typing-indicator').style.display = 'none';
+                addMessageToUI('bot', data.reply);
+                chatHistory.push({role: 'bot', text: data.reply});
+                localStorage.setItem('adminChat', JSON.stringify(chatHistory));
+            } else {
+                document.getElementById('typing-indicator').style.display = 'flex';
+                addMessageToUI('user', text);
+                chatHistory.push({role: 'user', text});
+                localStorage.setItem('adminChat', JSON.stringify(chatHistory));
+                ws.send(text);
+            }
+            input.value = '';
+            input.style.height = 'auto';
+        }
 
-# إدارة اليوزرز
-@app.get("/admin-stats")
-def admin_stats():
-    try:
-        total_users = supabase.table("users").select("id", count="exact").execute().count or 0
-        total_leads = supabase.table("leads").select("id", count="exact").execute().count or 0
-        total_messages = supabase.table("campaign_logs").select("id", count="exact").execute().count or 0
-        return {"total_users": total_users, "total_leads": total_leads, "total_messages": total_messages}
-    except: return {"total_users": 0, "total_leads": 0, "total_messages": 0}
+        // ====== تبديل الشات ======
+        function toggleChat() {
+            const box = document.getElementById('admin-chat-container');
+            box.style.display = box.style.display === 'none' ? 'block' : 'none';
+        }
 
-@app.get("/last-events")
-def last_events():
-    try:
-        events = supabase.table("events").select("*").order("created_at", desc=True).limit(10).execute()
-        return {"events": events.data}
-    except: return {"events": []}
+        // ====== تبديل استخراج الأرقام ======
+        function toggleExtractor() {
+            const box = document.getElementById('extractor-container');
+            box.style.display = box.style.display === 'none' ? 'block' : 'none';
+        }
 
-@app.post("/add-user")
-def add_user(req: AddUserRequest):
-    try:
-        supabase.table("users").insert(req.dict()).execute()
-        return {"success": True, "message": "تم الإضافة"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        // ====== عرض الحملات ======
+        function showCampaigns() {
+            document.getElementById('campaigns-section').style.display = 'block';
+            loadUserCampaigns();
+        }
 
-@app.post("/delete-user")
-def delete_user(username: str):
-    try:
-        supabase.table("users").delete().eq("username", username).execute()
-        return {"success": True, "message": "تم الحذف"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        // ====== عرض نموذج إنشاء الحملة ======
+        function showCreateCampaign() {
+            document.getElementById('create-campaign-form').style.display = 'block';
+        }
 
-@app.post("/update-permissions")
-def update_permissions(req: dict):
-    try:
-        supabase.table("users").update({
-            "can_hunt": req["can_hunt"],
-            "can_campaign": req["can_campaign"],
-            "can_share": req["can_share"],
-            "can_see_all_data": req["can_see_all_data"],
-            "is_admin": req["is_admin"]
-        }).eq("username", req["username"]).execute()
-        return {"success": True, "message": "تم التحديث"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        // ====== إنشاء الحملة ======
+        async function createCampaign() {
+            const name = document.getElementById('campaign-name').value.trim();
+            const message = document.getElementById('campaign-message').value.trim();
+            const fileInput = document.getElementById('campaign-media');
+            const file = fileInput.files[0];
+            if (!name || !message) return alert("أكمل البيانات");
 
-# صحة التطبيق
-@app.get("/health")
-def health_check():
-    return {"status": "running", "timestamp": datetime.now().isoformat()}
+            const formData = new FormData();
+            formData.append("name", name);
+            formData.append("message", message);
+            formData.append("user_id", "user");
+            if (file) formData.append("media", file);
+
+            const res = await fetch('/api/create-campaign', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const data = await res.json();
+            alert(data.reply);
+            loadUserCampaigns();
+            document.getElementById('create-campaign-form').style.display = 'none';
+            fileInput.value = "";
+        }
+
+        // ====== تحميل حملات اليوزر ======
+        async function loadUserCampaigns() {
+            const res = await fetch('/api/my-campaigns', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            const listBox = document.getElementById('campaigns-list');
+            listBox.innerHTML = "";
+            if (data.campaigns.length === 0) {
+                listBox.innerHTML = "<p>لا توجد حملات حتى الآن</p>";
+                return;
+            }
+            data.campaigns.forEach(c => {
+                const div = document.createElement('div');
+                div.className = "campaign-card";
+                div.innerHTML = `
+                    <strong>${c.name}</strong><br>
+                    <small>${c.message.substring(0, 50)}...</small><br>
+                    <small>الحالة: ${c.status} | تم الإرسال: ${c.sent_count} | تم التسليم: ${c.delivered_count}</small><br>
+                    <button class="btn" onclick="sendCampaign('${c.id}')">إرسال الآن</button>
+                    <button class="btn" onclick="deleteCampaign('${c.id}')">🗑️ حذف</button>
+                `;
+                listBox.appendChild(div);
+            });
+        }
+
+        // ====== إرسال الحملة ======
+        async function sendCampaign(campaignId) {
+            if (!confirm("سيتم إرسال الحملة فعليًا – متأكد؟")) return;
+            const res = await fetch('/api/send-campaign', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ campaign_id: campaignId })
+            });
+            const data = await res.json();
+            alert(data.reply);
+            loadUserCampaigns();
+        }
+
+        // ====== حذف الحملة ======
+        async function deleteCampaign(campaignId) {
+            if (!confirm("سيتم حذف الحملة نهائيًا – متأكد؟")) return;
+            const res = await fetch('/api/delete-campaign', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ campaign_id: campaignId })
+            });
+            const data = await res.json();
+            alert(data.reply);
+            loadUserCampaigns();
+        }
+
+        // ====== استخراج الأرقام ======
+        async function extractPhones() {
+            const text = document.getElementById('extract-text').value;
+            const res = await fetch('/api/extract-phones', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ text })
+            });
+            const data = await res.json();
